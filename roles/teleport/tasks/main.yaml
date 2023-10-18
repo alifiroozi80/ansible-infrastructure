@@ -1,0 +1,77 @@
+---
+- name: Install Teleport on "RedHat" Distribution.
+  when: ansible_os_family == 'RedHat'
+  block:
+    - name: Add Teleport YUM repository.
+      ansible.builtin.yum_repository:
+        name: teleport
+        description: Teleport YUM repo
+        baseurl: https://yum.releases.teleport.dev/{{ ansible_facts['ansible_distribution'] | lower }}/{{ ansible_facts['ansible_distribution_release'] | lower }}/Teleport/%{_arch}/stable/v13/teleport.repo
+
+    - name: Update repositories cache and install "Teleport" package.
+      ansible.builtin.yum:
+        update_cache: true
+        name: teleport
+        state: present
+    
+    - name: Add a path to system-wide $PATH.
+      ansible.builtin.copy:
+        dest: /etc/profile.d/custom-path.sh
+        content: 'PATH=$PATH:{{ path_var }}'
+
+
+- name: Install Teleport on "Debian" Distribution.
+  when: ansible_os_family == 'Debian'
+  block:
+    - name: Download APT Key.
+      ansible.builtin.get_url:
+        url: https://apt.releases.teleport.dev/gpg
+        dest: /usr/share/keyrings/teleport-archive-keyring.asc
+
+    - name: Add Teleport APT repository for v13.
+      ansible.builtin.apt_repository:
+        repo: "deb [signed-by=/usr/share/keyrings/teleport-archive-keyring.asc] https://apt.releases.teleport.dev/{{ ansible_facts['distribution'] | lower }} {{ ansible_facts['distribution_release'] }} stable/v13"
+        state: present
+    
+    - name: Update repositories cache and install "Teleport" package.
+      ansible.builtin.apt:
+        update_cache: true
+        name: teleport
+        state: present
+
+- name: Copy Teleport configurations.
+  ansible.builtin.copy:
+    src: teleport.yaml
+    dest: /etc/
+    mode: u=rw,g=r,o=r
+
+- name: Enable the Teleport.
+  ansible.builtin.systemd:
+    name: teleport.service
+    state: started
+    enabled: true
+
+- name: Copy Roles files.
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: /tmp
+    mode: u=rw,g=r,o=r
+  with_items: 
+    - admin-role.yaml
+    - kube-access.yaml
+
+- name: Apply the Roles.
+  ansible.builtin.shell: tctl create /tmp/{{ item }}
+  with_items: 
+    - digify-admin-role.yaml
+    - kube-access.yaml
+  ignore_errors: true
+
+- name: Create "teleport-admin" user.
+  ansible.builtin.command: tctl users add teleport-admin --roles=editor,access,auditor --logins={{ teleport_admin_user_logins }}
+  register: teleport_admin_link
+  ignore_errors: true
+
+- name: Print User Invite Link. If it was [empty], the user has already registered.
+  debug: 
+    msg: "{{ teleport_admin_link.stdout.split('\n')[:-1] }}"

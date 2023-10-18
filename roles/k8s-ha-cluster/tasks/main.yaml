@@ -1,0 +1,151 @@
+---
+- name: Change A thing.
+  ansible.builtin.command: echo Hello World
+  changed_when: true
+  notify: 
+    - Disconnect from any VPN Server that is already established.
+    - Reload Network Manager.
+
+- name: Force the handlres to execute.
+  ansible.builtin.meta: flush_handlers
+
+- name: Clear old Facts.
+  ansible.builtin.meta: clear_facts
+
+- ansible.builtin.gather_facts:
+    parallel: true
+
+- name: Add nodes to "/etc/hosts".
+  ansible.builtin.blockinfile:
+    path: /etc/hosts
+    block: |
+      {% for item in (groups['production-cluster']) %}
+      {% set found = hostvars[item].get('ansible_default_ipv4') %}
+      {% set name = hostvars[item].get('ansible_hostname') %}
+      {{ name }} {{ found.get('address') }}
+      {% endfor %}
+    marker: "# {mark} ANSIBLE MANAGED BLOCK Kubernetes"
+  changed_when: true
+  notify:
+    - Connect to the VPN Server.
+
+- name: Force a handlre to execute.
+  ansible.builtin.meta: flush_handlers
+
+- name: Disable Swap.
+  command: swapoff -a
+  changed_when: true
+  when: ansible_swaptotal_mb > 0
+
+- name: Remove swap from "fstab".
+  lineinfile:
+    path: '/etc/fstab'
+    regexp: '\sswap\s'
+    state: 'absent'
+
+- name: Create K8s modules-load.
+  ansible.builtin.blockinfile:
+    path: /etc/modules-load.d/k8s.conf
+    create: true
+    block: |
+      overlay
+      br_netfilter
+
+- name: Add the "overlay" and "br_netfilter" module.
+  community.general.modprobe:
+    name: "{{ item }}"
+    state: present
+  with_items: 
+    - overlay
+    - br_netfilter
+
+- name: Set necessary params on in sysctl file and reload.
+  ansible.posix.sysctl:
+    name: "{{ item }}"
+    value: '1'
+    sysctl_set: true
+    state: present
+    reload: true
+  with_items: 
+    - net.bridge.bridge-nf-call-iptables
+    - net.bridge.bridge-nf-call-ip6tables
+    - net.ipv4.ip_forward
+
+- name: Install "containerd" package.
+  ansible.builtin.apt:
+    update_cache: true
+    name: containerd
+    state: present
+
+- name: Create containerd directory if it does not exist.
+  ansible.builtin.file:
+    path: /etc/containerd
+    state: directory
+    mode: '0755'
+    owner: root
+    group: root
+
+- name: Get Containerd "Default" Configs.
+  ansible.builtin.command: containerd config default
+  register: containerd_config
+
+- name: Print containerd configuration to its file.
+  ansible.builtin.copy:
+    content: "{{containerd_config.stdout}}"
+    dest: /etc/containerd/config.toml
+  register: containerd_file
+
+- name: Restart "containerd" service.
+  ansible.builtin.systemd:
+    state: restarted
+    name: containerd
+  when: containerd_file.changed
+
+- name: Install necessary packages for kubeadm.
+  ansible.builtin.apt:
+    update_cache: true
+    name: "{{ item }}"
+    state: present
+  with_items: 
+    - apt-transport-https
+    - ca-certificates
+    - curl
+
+- name: Create apt-keyrings directory if it does not exist.
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: a=---,u=rw,go=r
+    owner: root
+    group: root
+
+- name: Download Kubernetes GPG Key.
+  ansible.builtin.get_url:
+    url: https://dl.k8s.io/apt/doc/apt-key.gpg
+    dest: /etc/apt/trusted.gpg.d/kubernetes-archive-keyring.gpg
+    mode: '0444'
+
+- name: Add Kubernetes APT repository.
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/etc/apt/trusted.gpg.d/kubernetes-archive-keyring.gpg] https://apt.kubernetes.io/ kubernetes-xenial main"
+    state: present
+    update_cache: true
+
+- name: Install kube[let,adm,ctl].
+  ansible.builtin.apt:
+    name: "{{ item }}"
+    state: present
+    allow_downgrade: true
+  with_items: 
+    - kubelet={{ kubernetes_version }}
+    - kubeadm={{ kubernetes_version }}
+    - kubectl={{ kubernetes_version }}
+
+- name: Prevent kube[let,adm,ctl] from being upgraded.
+  ansible.builtin.dpkg_selections:
+    name: "{{ item }}"
+    selection: hold
+  with_items: 
+    - kubelet
+    - kubeadm
+    - kubectl

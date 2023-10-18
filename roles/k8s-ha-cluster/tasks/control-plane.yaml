@@ -1,0 +1,68 @@
+---
+- name: Pull necessary kubeadm images.
+  ansible.builtin.command: kubeadm config images pull
+  notify: 
+    - Disconnect from any VPN Server that is already established.
+    - Reload Network Manager.
+
+- name: Force a handlre to execute.
+  ansible.builtin.meta: flush_handlers
+
+- name: Clear old Facts.
+  ansible.builtin.meta: clear_facts
+
+- ansible.builtin.gather_facts:
+    parallel: false
+
+- name: Kubeadm Init.
+  block:
+  - name: Initialize the Cluster.
+    ansible.builtin.command: |
+      {% for item in (groups['ha-proxy']) %}
+      {% set found = hostvars[item].get('ansible_default_ipv4') %}
+      kubeadm init --control-plane-endpoint {{ found.get('address') }}:8443 --upload-certs --apiserver-advertise-address {{ ansible_default_ipv4.address }}
+      {% endfor %}
+    register: xxx
+    changed_when: "'Port 6443 is in use' not in xxx.stderr"
+    notify:
+    - Connect to the VPN Server.
+
+  rescue:
+  - name: Print The Reason.
+    ansible.builtin.debug:
+      msg: 'The Cluster has already been initialized'
+
+- name: Force a handlre to execute.
+  ansible.builtin.meta: flush_handlers
+
+- name: Install Pip3.
+  ansible.builtin.apt:
+    name: python3-pip
+    state: present
+
+- name: install pre-requisites.
+  ansible.builtin.pip:
+    name:
+      - kubernetes
+      - PyYAML
+      - jsonpatch 
+
+- name: Download WeaveNet manifest.
+  ansible.builtin.get_url:
+    url: https://github.com/weaveworks/weave/releases/download/v2.8.1/weave-daemonset-k8s.yaml
+    dest: /tmp/weave-daemonset-k8s.yaml
+    mode: '0664'
+
+- name: Apply WeaveNet manifest to the cluster.
+  kubernetes.core.k8s:
+    state: present
+    src: /tmp/weave-daemonset-k8s.yaml
+    kubeconfig: /etc/kubernetes/admin.conf
+
+- name: Print Join Command.
+  ansible.builtin.command: kubeadm token create --print-join-command
+  register: kubeadm_worker_join_command
+
+- name: Print Certificate-Key.
+  ansible.builtin.command: kubeadm init phase upload-certs --upload-certs
+  register: kubeadm_certificate_key

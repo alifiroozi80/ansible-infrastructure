@@ -1,0 +1,48 @@
+---
+- name: Initialize the Server.
+  block:
+    - name: Insert/Update VM Nameservers.
+      become: true
+      ansible.builtin.blockinfile:
+        path: "/etc/haproxy/haproxy.cfg"
+        backup: true
+        block: |
+          #---------------------------------------------------------------------
+          # apiserver frontend which proxys to the control plane nodes
+          #---------------------------------------------------------------------
+          frontend apiserver
+              bind *:8443
+              mode tcp
+              option tcplog
+              default_backend apiserver
+
+          #---------------------------------------------------------------------
+          # round robin balancing for apiserver
+          #---------------------------------------------------------------------
+          backend apiserver
+              option httpchk GET /healthz
+              http-check expect status 200
+              mode tcp
+              option ssl-hello-chk
+              balance     roundrobin
+            {% for item in (groups['masters']) %}
+            {% set found = hostvars[item].get('ansible_default_ipv4') %}
+            {% set name = hostvars[item].get('ansible_hostname') %}
+            server {{ name }} {{ found.get('address') }}:6443 check
+            {% endfor %}
+        validate: haproxy -c -V -f %s
+      register: stdrr
+    
+    - name: Apply HAProxy Configuration.
+      ansible.builtin.systemd:
+        state: restarted
+        name: haproxy.service
+
+  rescue:
+  
+    - name: Prints the failure message.
+      ansible.builtin.debug:
+        msg:
+        - "Something went wrong!"
+        - "It's either a syntax issue on the HAProxy config"
+        - "Or the HAProxy hasn't been installed at all!"

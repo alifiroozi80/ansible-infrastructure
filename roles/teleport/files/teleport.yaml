@@ -1,0 +1,43 @@
+version: v3
+
+teleport:
+  nodename: teleport
+  data_dir: /var/lib/teleport
+  diag_addr: "127.0.0.1:3000"
+  connection_limits:
+    max_connections: 50
+    max_users: 10
+  log:
+    output: stderr
+    severity: INFO
+    format:
+      output: text
+
+proxy_service:
+  enabled: "yes"
+  web_listen_addr: 0.0.0.0:443
+  public_addr: YOUR-DOMAIN
+  https_keypairs_reload_interval: 0s
+  acme:
+    enabled: "yes"
+    email: YOUR_EMAIL
+
+auth_service:
+  enabled: "yes"
+  listen_addr: 0.0.0.0:3025
+  cluster_name: "digify"
+  proxy_listener_mode: multiplex
+  web_idle_timeout: "30m"
+  client_idle_timeout: "30m"
+  client_idle_timeout_message: "The server kicked you off due to being inactive for 30 minutes."
+  authentication:
+    second_factor: "otp"
+
+ssh_service:
+  enabled: "yes"
+  disable_create_host_user: false
+  listen_addr: 0.0.0.0:3022
+  commands:
+  - name: hostname
+    command: [hostname]
+    period: 5m0s

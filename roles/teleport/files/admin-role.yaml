@@ -1,0 +1,13 @@
+version: v6
+kind: role
+metadata:
+  name: kube-admin
+spec:
+  allow:
+    kubernetes_labels:
+      '*': '*'
+    kubernetes_groups:
+    - admin
+  deny: {}
+  options:
+    create_host_user: true

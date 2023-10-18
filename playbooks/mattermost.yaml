@@ -1,0 +1,17 @@
+- name: MatterMost Playbook
+  hosts: mattermost
+  become: true
+
+  vars_files:
+    - ../_vars/vars.yaml
+
+  tasks:
+    - name: Update cache if needed
+      ansible.builtin.import_tasks: ../_tasks/pre_tasks.yaml
+    - name: Include the Roles
+      ansible.builtin.include_role:
+        name: "{{ item }}"
+      loop:
+        - ../roles/mattermost
+  tags:
+    - mattermost

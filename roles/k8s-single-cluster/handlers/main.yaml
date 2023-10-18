@@ -1,0 +1,13 @@
+---
+- name: Disconnect from any VPN Server that is already established.
+  ansible.builtin.command: killall openconnect
+  ignore_errors: true
+
+- name: Reload Network Manager.
+  ansible.builtin.command: netplan apply
+
+- name: Connect to the VPN Server.
+  ansible.builtin.shell: >
+    echo '{{ password }}' | openconnect {{ url }}:443 --user={{ username }} --authgroup=route --background --passwd-on-stdin {{ certificate }}
+  async: "{{ keep_vpn_on_for }}"
+  poll: 0

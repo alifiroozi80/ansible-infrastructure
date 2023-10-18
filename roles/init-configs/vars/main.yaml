@@ -1,0 +1,14 @@
+use_vpn: false
+
+nameservers: |
+  nameservers:
+      addresses:
+          - 1.1.1.1
+          - 8.8.8.8
+          - 8.8.4.4
+
+  routes: 
+  - to: {{ ip.content.replace('\n', '') }}
+    via: {{ ansible_facts.default_ipv4.gateway }}
+  - to: 0.0.0.0/0
+    via: {{ ansible_facts.default_ipv4.gateway }}

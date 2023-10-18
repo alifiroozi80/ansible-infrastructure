@@ -1,0 +1,16 @@
+---
+- name: Backup Mattermost.
+  block:
+    - name: Backup Mattermsot.
+      ansible.builtin.command: mmomni backup -o {{ backup_path }}/mattermost-backup-{{ '%Y-%m-%d' | strftime }}.tgz
+      register: backup_msg
+
+  rescue:
+    - name: Print when errors
+      vars:
+        msg: |
+          Something went wrong!
+          Type: {{ backup_msg.msg }}
+          Error: {{ backup_msg.stderr }}
+      ansible.builtin.debug:
+        msg: "{{ msg.split('\n') }}"

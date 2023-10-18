@@ -1,0 +1,20 @@
+---
+- import_playbook: vm-configs.yaml
+
+- name: Teleport Playbook
+  hosts: teleport
+  become: true
+
+  vars_files:
+    - ../_vars/vars.yaml
+
+  tasks:
+    - name: Update cache if needed
+      ansible.builtin.import_tasks: ../_tasks/pre_tasks.yaml
+    - name: Include the Roles
+      ansible.builtin.include_role:
+        name: "{{ item }}"
+      loop:
+        - ../roles/teleport
+  tags:
+    - teleprt

@@ -1,0 +1,50 @@
+---
+- import_playbook: vm-configs.yaml
+
+- name: Kubernetes Cluster Setup Playbook
+  hosts: production-cluster
+  become: true
+  vars_files:
+    - ../_vars/vars.yaml
+  tasks:
+    - name: Update cache if needed
+      ansible.builtin.import_tasks: ../_tasks/pre_tasks.yaml
+    - name: Include the Roles
+      ansible.builtin.include_role:
+        name: "{{ item }}"
+      loop:
+        - ../roles/k8s-single-cluster
+  tags:
+    - kubernetes
+    - k8s-single
+    - cluster-setup
+
+- name: Setup Masters.
+  hosts: masters
+  become: true
+  vars_files:
+    - ../_vars/vars.yaml
+  tasks:
+  - name: Initialize the masters.
+    ansible.builtin.include_role:
+      name: '../roles/k8s-single-cluster'
+      tasks_from: masters.yaml
+  tags:
+    - kubernetes
+    - k8s-single
+    - master-setup
+
+- name: Setup Workers.
+  hosts: workers
+  become: true
+  vars_files:
+    - ../_vars/vars.yaml
+  tasks:
+  - name: Initialize the workers.
+    ansible.builtin.include_role:
+      name: '../roles/k8s-single-cluster'
+      tasks_from: workers.yaml
+  tags:
+    - kubernetes
+    - k8s-single
+    - worker-setup

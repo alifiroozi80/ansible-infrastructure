@@ -1,0 +1,11 @@
+---
+- name: Initial Servers Configurations Playbook
+  hosts: all
+  tasks:
+    - name: Include the Roles
+      ansible.builtin.include_role:
+        name: "{{ item }}"
+      loop:
+        - ../roles/init-configs
+  tags:
+    - configs

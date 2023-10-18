@@ -1,0 +1,23 @@
+- name: Kubeadm Init.
+  block:
+  - name:  Join to the existing cluster.
+    ansible.builtin.command: |
+      {% for item in (groups['masters']) %}
+      {% set found = hostvars[item]['kubeadm_worker_join_command'].stdout %}
+      {{ found }}
+      {% endfor %}
+    register: join_stderr
+
+  rescue:
+  - name: '[Errno 2] No such file or directory.'
+    ansible.builtin.debug:
+      msg: |
+        The Kubeadm binary is not available.
+        Either you skipped the 'Kubernetes Cluster Setup Playbook'.
+        Or you point this Playbook against the wrong servers.
+    when: "'No such file' in join_stderr.msg"
+  
+  always:
+  - notify: 
+    - Disconnect from any VPN Server that is already established.
+    - Reload Network Manager.

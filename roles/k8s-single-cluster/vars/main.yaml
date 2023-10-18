@@ -1,0 +1,2 @@
+# Get the version by `apt-cache madison kubeadm`
+kubernetes_version: 1.27.2-00

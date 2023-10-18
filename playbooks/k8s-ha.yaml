@@ -1,0 +1,77 @@
+---
+- import_playbook: vm-configs.yaml
+
+- name: Kubernetes Config Existing HAProxy.
+  hosts: ha-proxy
+  become: true
+  vars_files:
+    - ../_vars/vars.yaml
+  roles:
+    - '../roles/ha-proxy'
+  tags:
+    - kubernetes
+    - k8s-ha
+    - ha-setup
+
+- name: Kubernetes Cluster Setup Playbook
+  hosts: production-cluster
+  become: true
+  vars_files:
+    - ../_vars/vars.yaml
+  tasks:
+    - name: Update cache if needed
+      ansible.builtin.import_tasks: ../_tasks/pre_tasks.yaml
+    - name: Include the Roles
+      ansible.builtin.include_role:
+        name: "{{ item }}"
+      loop:
+        - ../roles/k8s-ha-cluster
+  tags:
+    - kubernetes
+    - k8s-ha
+    - cluster-setup
+
+- name: Setup First Control Plane.
+  hosts: control-plane
+  become: true
+  vars_files:
+    - ../_vars/vars.yaml
+  tasks:
+  - name: Initialize the control plane.
+    ansible.builtin.include_role:
+      name: '../roles/k8s-ha-cluster'
+      tasks_from: control-plane.yaml
+  tags:
+    - kubernetes
+    - k8s
+    - control-plane-setup
+
+- name: Setup Masters.
+  hosts: masters
+  become: true
+  vars_files:
+    - ../_vars/vars.yaml
+  tasks:
+  - name: Initialize the masters.
+    ansible.builtin.include_role:
+      name: '../roles/k8s-ha-cluster'
+      tasks_from: masters.yaml
+  tags:
+    - kubernetes
+    - k8s
+    - master-setup
+
+- name: Setup Workers.
+  hosts: workers
+  become: true
+  vars_files:
+    - ../_vars/vars.yaml
+  tasks:
+  - name: Initialize the workers.
+    ansible.builtin.include_role:
+      name: '../roles/k8s-ha-cluster'
+      tasks_from: workers.yaml
+  tags:
+    - kubernetes
+    - k8s
+    - worker-setup

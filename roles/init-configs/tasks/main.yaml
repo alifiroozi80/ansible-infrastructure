@@ -1,0 +1,85 @@
+---
+- name: Initialize the Server.
+  block:
+    - name: Find Netplan File.
+      become: true
+      ansible.builtin.find:
+        paths: /etc/netplan
+        patterns: '.+[\.yaml]$'
+        use_regex: yes
+      register: netplan_path
+
+    - name: Check your current IP address.
+      ansible.builtin.uri:
+        url: https://icanhazip.com
+        return_content: true
+      delegate_to: 127.0.0.1
+      register: ip
+  
+    - name: Insert/Update VM Nameservers.
+      become: true
+      ansible.builtin.blockinfile:
+        path: "{{netplan_path.files[0].path}}"
+        insertafter: "set-name:"
+        backup: true
+        block:  "{{ nameservers | indent(width=12, first=True) }}"
+      register: stdrr
+    
+    - name: Apply netplan.
+      become: true
+      ansible.builtin.command: sudo netplan apply
+      changed_when: stdrr.changed == true
+
+  rescue:
+    - name: Find Netplan Backup File.
+      become: true
+      ansible.builtin.find:
+        paths: /etc/netplan
+        patterns: '.+\.yaml.+[~]$'
+        use_regex: yes
+      register: netplan_back_path
+  
+    - name: Replace Backup with Original.
+      become: true
+      ansible.builtin.copy:
+        src: "{{netplan_back_path.files[0].path}}"
+        dest: "{{netplan_path.files[0].path}}"
+        remote_src: yes
+    
+    - name: Apply netplan.
+      become: true
+      ansible.builtin.command: sudo netplan apply
+      notify:
+        - Notify Admin.
+
+  always:
+    - name: Add machine name to /etc/hosts.
+      become: true
+      ansible.builtin.lineinfile:
+        path: /etc/hosts
+        regexp: '^127\.0\.0\.1'
+        line: 127.0.0.1 localhost {{ansible_facts['hostname']}}
+  
+    - name: Update the Servers.
+      block:
+      - name: Update Repositories.
+        become: true
+        ansible.builtin.apt:
+          update_cache: true
+          cache_valid_time: 3600
+    
+      rescue:
+        - name: Print Reason.
+          ansible.builtin.debug:
+            msg: |
+              Skiped for some reasons.
+
+    - name: Install some necessary packages.
+      become: true
+      ansible.builtin.apt:
+        name: "{{ item }}"
+        state: present
+      with_items:
+          - net-tools
+          - openconnect
+          - lvm2

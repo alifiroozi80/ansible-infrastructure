@@ -1,0 +1,3 @@
+---
+- name: Notify Admin.
+  ansible.builtin.shell: echo SOMETHING.

@@ -1,0 +1,2 @@
+path_var: /usr/local/bin
+teleport_admin_user_logins: root,ubuntu

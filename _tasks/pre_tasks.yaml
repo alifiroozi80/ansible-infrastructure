@@ -1,0 +1,75 @@
+---
+- name: Update YUM cache if needed.
+  when: ansible_os_family == 'RedHat'
+  block:
+    - ansible.builtin.yum: 
+        update_cache: true
+        cache_valid_time: 3600
+
+- name: Update APT cache if needed.
+  when: ansible_os_family == 'Debian'
+  block:
+    - ansible.builtin.apt: 
+        update_cache: true
+        cache_valid_time: 3600
+
+- name: Connect to an Ocserve VPN.
+  when: use_vpn
+  block:
+    - ansible.builtin.pause:
+        prompt: "What is your Ocserve Address?"
+      register: prompt
+      no_log: yes
+      run_once: yes
+    - ansible.builtin.set_fact:
+        url: "{{ prompt.user_input }}"
+      no_log: yes
+      run_once: yes
+    - ansible.builtin.pause:
+        prompt: "What is your Ocserve Username?"
+      register: prompt
+      no_log: yes
+      run_once: yes
+    - ansible.builtin.set_fact:
+        username: "{{ prompt.user_input }}"
+      no_log: yes
+      run_once: yes
+    - ansible.builtin.pause:
+        prompt: "What is your Ocserve Password?"
+        echo: no
+      register: prompt
+      no_log: yes
+      run_once: yes
+    - ansible.builtin.set_fact:
+        password: "{{ prompt.user_input }}"
+      no_log: yes
+      run_once: yes
+
+    - name: Get Server Certificate.
+      ansible.builtin.shell: echo bullshit | openconnect {{ url }}:443 --user=bullshit --authgroup=route --passwd-on-stdin
+      register: xxx
+      failed_when: "'servercert' not in xxx.stderr"
+
+    - name: Set the Server Certificate.
+      ansible.builtin.set_fact:
+        certificate: "{{xxx.stderr.split('\n')[4]}}"
+
+    - name: Disconnect from any VPN Server that is already established.
+      ansible.builtin.command: killall openconnect
+      ignore_errors: true
+
+    - name: Reload Network Manager.
+      ansible.builtin.command: netplan apply
+    
+    - name: Connect to the VPN Server.
+      ansible.builtin.shell: >
+        echo '{{ password }}' | openconnect {{ url }}:443 --user={{ username }} --authgroup=route --background --passwd-on-stdin {{ certificate }}
+      async: "{{ keep_vpn_on_for }}"
+      poll: 0
+  
+  rescue:
+    - name: 
+      ansible.builtin.debug: 
+        msg: |
+          Something went wrong!
+          You probably enter the server URL, username, or password wrong!

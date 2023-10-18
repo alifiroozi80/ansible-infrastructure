@@ -1,0 +1,59 @@
+---
+- name: Pull necessary kubeadm images.
+  ansible.builtin.command: kubeadm config images pull
+
+- name: Kubeadm Init.
+  block:
+  - name: Initialize the Cluster.
+    ansible.builtin.command: kubeadm init
+    register: xxx
+    changed_when: "'Port 6443 is in use' not in xxx.stderr"
+
+  rescue:
+  - name: Print The Reason.
+    ansible.builtin.debug:
+      msg: 'The Cluster has already been initialized'
+
+- name: Install Pip3.
+  ansible.builtin.apt:
+    name: python3-pip
+    state: present
+
+- name: install pre-requisites.
+  ansible.builtin.pip:
+    name:
+      - kubernetes
+      - PyYAML
+      - jsonpatch 
+
+- name: Download WeaveNet manifest.
+  ansible.builtin.get_url:
+    url: https://github.com/weaveworks/weave/releases/download/v2.8.1/weave-daemonset-k8s.yaml
+    dest: /tmp/weave-daemonset-k8s.yaml
+    mode: '0664'
+
+- name: Apply WeaveNet manifest to the cluster.
+  kubernetes.core.k8s:
+    state: present
+    src: /tmp/weave-daemonset-k8s.yaml
+    kubeconfig: /etc/kubernetes/admin.conf
+
+- name: Print Join Command.
+  ansible.builtin.command: kubeadm token create --print-join-command
+  register: kubeadm_worker_join_command
+
+- name: Create ".kube" if it does not exist.
+  ansible.builtin.file:
+    path: /home/{{ansible_ssh_user}}/.kube
+    state: directory
+    owner: "{{ansible_ssh_user}}"
+    group: "{{ansible_ssh_user}}"
+    mode: '0740'
+
+- name: Copy "admin.conf" with owner and permissions.
+  ansible.builtin.copy:
+    src: /etc/kubernetes/admin.conf
+    dest: /home/{{ansible_ssh_user}}/.kube/config
+    remote_src: true
+    owner: "{{ansible_ssh_user}}"
+    group: "{{ansible_ssh_user}}"

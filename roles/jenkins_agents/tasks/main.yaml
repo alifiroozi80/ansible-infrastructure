@@ -1,0 +1,160 @@
+---
+- name: Install Docker on "CentOS" Distribution.
+  when: ansible_facts['distribution'] == 'CentOS'
+  block:
+    - name: Install necessary packages.
+      ansible.builtin.yum:
+        name: yum-utils
+        state: present
+
+    - name: Add Docker YUM repository.
+      ansible.builtin.yum_repository:
+        name: docker
+        description: Docker YUM repo
+        baseurl: https://download.docker.com/linux/centos/docker-ce.repo
+    
+    - name: Update repositories cache and install "Docker" packages.
+      ansible.builtin.yum:
+        update_cache: true
+        name: "{{ item }}"
+        state: present
+      with_items:
+        - docker-ce
+        - docker-ce-cli
+        - containerd.io
+        - docker-buildx-plugin
+        - docker-compose-plugin
+
+    - name: Restart service docker on centos, in all cases, also issue daemon-reload to pick up config changes.
+      ansible.builtin.systemd:
+        state: restarted
+        daemon_reload: true
+        name: docker
+
+- name: Install Teleport on "RedHat" Distribution.
+  when: ansible_os_family == 'RedHat'
+  block:
+    - name: Add Teleport YUM repository.
+      ansible.builtin.yum_repository:
+        name: teleport
+        description: Teleport YUM repo
+        baseurl: https://yum.releases.teleport.dev/{{ ansible_facts['ansible_distribution'] | lower }}/{{ ansible_facts['ansible_distribution_release'] | lower }}/Teleport/%{_arch}/stable/v13/teleport.repo
+
+    - name: Update repositories cache and install "Teleport" package.
+      ansible.builtin.yum:
+        update_cache: true
+        name: teleport
+        state: present
+    
+    - name: Add a path to system-wide $PATH.
+      ansible.builtin.copy:
+        dest: /etc/profile.d/custom-path.sh
+        content: 'PATH=$PATH:{{ path_var }}'
+
+- name: Install Docker on "Ubuntu" Distribution.
+  when: ansible_facts['distribution'] == 'Ubuntu'
+  block:
+    - name: Install necessary packages.
+      ansible.builtin.apt:
+        name: "{{ item }}"
+        state: present
+      with_items:
+        - ca-certificates
+        - curl
+        - gnupg
+        - python3-pip
+
+    - name: Create the "keyrings" if it does not exist.
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: '0755'
+    
+    - name: Download GPG Key.
+      ansible.builtin.get_url:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        dest: /etc/apt/keyrings/docker.asc
+        mode: '0444'
+
+    - name: Add Docker APT repository.
+      ansible.builtin.apt_repository:
+        repo: 'deb [arch="amd64" signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu "{{ ansible_distribution_release }}" stable'
+        state: present
+        update_cache: true
+
+    - name: Update repositories cache and install "Docker" packages.
+      ansible.builtin.apt:
+        update_cache: true
+        name: "{{ item }}"
+        state: present
+      with_items:
+        - docker-ce
+        - docker-ce-cli
+        - containerd.io
+        - docker-buildx-plugin
+        - docker-compose-plugin
+        - openjdk-17-jre-headless
+
+- name: Install Teleport on "Debian" Distribution.
+  when: ansible_os_family == 'Debian'
+  block:
+    - name: Download APT Key.
+      ansible.builtin.get_url:
+        url: https://apt.releases.teleport.dev/gpg
+        dest: /usr/share/keyrings/teleport-archive-keyring.asc
+
+    - name: Add Teleport APT repository for v13.
+      ansible.builtin.apt_repository:
+        repo: "deb [signed-by=/usr/share/keyrings/teleport-archive-keyring.asc] https://apt.releases.teleport.dev/{{ ansible_facts['distribution'] | lower }} {{ ansible_facts['distribution_release'] }} stable/v13"
+        state: present
+    
+    - name: Update repositories cache and install "Teleport" package.
+      ansible.builtin.apt:
+        update_cache: true
+        name: teleport
+        state: present
+
+- name: Ensure group "docker" exists.
+  ansible.builtin.group:
+    name: docker
+    state: present
+
+- name: Add the user "vm_user" to "docker" groups.
+  ansible.builtin.user:
+    name: "{{ vm_user }}"
+    groups: docker
+    append: yes
+
+- name: Install necessary Tools.
+  ansible.builtin.unarchive:
+    src: "{{ item }}"
+    dest: /tmp
+    remote_src: yes
+  with_items: 
+    - https://downloads.dockerslim.com/releases/{{slim_version}}/dist_linux.tar.gz
+    - https://get.helm.sh/helm-v{{helm_version}}-linux-amd64.tar.gz
+    - https://github.com/google/addlicense/releases/download/v{{addlicense_version}}/addlicense_{{addlicense_version}}_Linux_x86_64.tar.gz
+    - https://github.com/aquasecurity/trivy/releases/download/v{{trivy_version}}/trivy_{{trivy_version}}_Linux-64bit.tar.gz
+
+- name: Move the binaries to the path
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: /usr/local/bin/
+    remote_src: true
+    mode: '555'
+  with_items: 
+    - /tmp/dist_linux/
+    - /tmp/linux-amd64/helm
+    - /tmp/addlicense
+    - /tmp/trivy
+
+- name: Create a symbolic link for slim
+  ansible.builtin.file:
+    src: /usr/local/bin/slim
+    dest: /usr/local/bin/docker-slim
+    state: link
+
+- name: Reboot the machine.
+  ansible.builtin.reboot:
+    reboot_timeout: 3600
+    msg: "Reboot initiated by Ansible"

@@ -1,0 +1,17 @@
+version: v6
+kind: role
+metadata:
+  name: kube-access
+spec:
+  allow:
+    kubernetes_labels:
+      '*': '*'
+    kubernetes_resources:
+      - kind: pod
+        namespace: "*"
+        name: "*"
+    kubernetes_groups:
+    - viewers
+    kubernetes_users:
+    - kubernetes-admin
+  deny: {}
